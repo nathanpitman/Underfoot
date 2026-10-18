@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Underfoot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Young+Serif&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* Layout: one column on phones (map above list); two columns on desktop with a sticky map. */
+:root{
+  --bg:#eef1ee; --surface:#ffffff; --ink:#18262b; --muted:#5b6b70; --line:#d3dbd8;
+  --accent:#0b6c86; --accent-ink:#ffffff; --mark-osm:#b5472b; --focus:#0b6c86;
+  --font-display:"Young Serif",Georgia,serif;
+  --font-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#10191c; --surface:#172326; --ink:#e4ecea; --muted:#92a5a9; --line:#2a3a3e; --accent:#52b6d0; --accent-ink:#0b1a1e; --mark-osm:#ef8a6c; --focus:#52b6d0}
+  .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88)}
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--font-body);
+  padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1200px;margin:0 auto}
+h1{font:400 clamp(1.9rem,5vw,2.6rem)/1.05 var(--font-display);margin:0;letter-spacing:-.01em}
+.tag{margin:6px 0 0;color:var(--muted);max-width:52ch}
+header{display:grid;gap:16px;margin-bottom:20px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+.search{flex:1 1 240px;display:flex;min-width:0}
+input[type=search]{flex:1;min-width:0;font:inherit;padding:11px 12px;border:1px solid var(--line);border-right:0;border-radius:6px 0 0 6px;background:var(--surface);color:var(--ink)}
+button{font:inherit;cursor:pointer;color:inherit}
+.btn{padding:11px 16px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.go{border-radius:0 6px 6px 0}
+.btn.ghost{background:transparent;color:var(--accent)}
+select{font:inherit;padding:11px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.app{display:grid;gap:20px;grid-template-columns:minmax(0,1fr)}
+.mapwrap{min-width:0}
+#map{height:min(44vh,420px);min-height:260px;border-radius:8px;border:1px solid var(--line);background:var(--surface)}
+.maphint{margin:8px 0 0;font-size:.85rem;color:var(--muted)}
+.results{min-width:0}
+.place h2{font:400 1.35rem/1.2 var(--font-display);margin:0}
+.place .sub{margin:4px 0 0;color:var(--muted);font-size:.9rem}
+.status{margin:14px 0 8px;font-family:var(--font-mono);font-size:.82rem;color:var(--muted);min-height:1.4em}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 14px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:.88rem}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip .n{font-family:var(--font-mono);font-size:.78rem;opacity:.75;margin-left:4px}
+.list{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.card{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px}
+.card img{width:84px;height:84px;object-fit:cover;border-radius:5px;background:var(--line)}
+.card .noimg{width:84px;height:84px;border-radius:5px;border:1px dashed var(--line);display:grid;place-items:center;font-family:var(--font-mono);font-size:.7rem;color:var(--muted);text-align:center;padding:4px}
+.card.osm .noimg{border-color:var(--mark-osm);color:var(--mark-osm)}
+.card h3{margin:0;font-size:1.02rem;line-height:1.3;font-weight:600}
+.meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:2px;font-size:.82rem;color:var(--muted)}
+.dist{font-family:var(--font-mono);color:var(--ink)}
+.desc{margin:6px 0 0;font-size:.92rem}
+.facts{margin:6px 0 0;padding:0;list-style:none;font-size:.88rem;color:var(--muted)}
+.facts b{color:var(--ink);font-weight:500}
+.badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.badge{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:.88rem}
+.actions a,.actions button{color:var(--accent);background:none;border:0;padding:0;text-decoration:underline;text-underline-offset:3px}
+.empty{padding:18px;border:1px dashed var(--line);border-radius:8px;color:var(--muted)}
+footer{margin-top:28px;font-size:.8rem;color:var(--muted);max-width:70ch}
+footer a{color:inherit}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (min-width:900px){
+  .app{grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);align-items:start}
+  .mapwrap{position:sticky;top:16px}
+  #map{height:calc(100vh - 96px);max-height:none}
+}
+@media (max-width:420px){.card{grid-template-columns:minmax(0,1fr)}.card img,.card .noimg{width:100%;height:140px}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Underfoot</h1>
+      <p class="tag">What happened where you are standing: former uses of buildings, people who lived nearby, plaques, and events.</p>
+    </div>
+    <div class="controls">
+      <button class="btn" id="locate" type="button">Use my location</button>
+      <form class="search" id="searchForm" role="search">
+        <label class="visually-hidden" for="q">Search for a street or place</label>
+        <input id="q" type="search" placeholder="Search a street, town or postcode" autocomplete="off">
+        <button class="btn go" type="submit">Go</button>
+      </form>
+      <label class="visually-hidden" for="radius">Search radius</label>
+      <select id="radius">
+        <option value="250">250 m</option>
+        <option value="500">500 m</option>
+        <option value="1000" selected>1 km</option>
+        <option value="2000">2 km</option>
+        <option value="5000">5 km</option>
+      </select>
+    </div>
+  </header>
+
+  <main class="app">
+    <section class="mapwrap" aria-label="Map">
+      <div id="map" role="application" aria-label="Map of nearby historic places"></div>
+      <p class="maphint">Tap anywhere on the map to explore that spot instead.</p>
+    </section>
+
+    <section class="results" aria-label="Results">
+      <div class="place">
+        <h2 id="placeName">Finding your area</h2>
+        <p class="sub" id="placeSub"></p>
+      </div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+      <div class="chips" id="chips" role="group" aria-label="Filter results"></div>
+      <ul class="list" id="list"></ul>
+    </section>
+  </main>
+
+  <footer>
+    Articles from <a href="https://www.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a> (CC BY-SA). Map data, plaques and historic tags from
+    <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL).
+    The People, Buildings and Events labels are guessed from keywords in each article, so some will be wrong. Check anything important at the source.
+  </footer>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  "use strict";
+  var DEFAULT = {lat:51.5074, lon:-0.1278, name:"Charing Cross, London", example:true};
+  var CATS = {
+    people:{label:"People", re:/\b(born|lived|lives|resided|residence|home of|birthplace|died|poet|author|writer|novelist|dramatist|painter|artist|composer|musician|singer|politician|prime minister|statesman|scientist|physicist|chemist|mathematician|engineer|inventor|physician|surgeon|philosopher|explorer|queen|king|prince|princess|emperor|duke|earl|lord|bishop|actor|actress|footballer|cricketer)\b/i},
+    buildings:{label:"Buildings & former uses", re:/\b(church|chapel|cathedral|abbey|priory|house|hall|manor|castle|theatre|theater|cinema|factory|mill|warehouse|brewery|school|college|hospital|workhouse|prison|gaol|pub|inn|hotel|station|bank|library|museum|barracks|market|bridge|tower|former|formerly|converted|conversion|demolished|rebuilt|listed building|grade i|grade ii|built)\b/i},
+    events:{label:"Events", re:/\b(battle|riot|murder|massacre|fire|bomb|bombing|blitz|explosion|assassinat\w*|execution|executed|trial|siege|protest|strike|disaster|crash|raid|plague|uprising|rebellion|meeting|first|opened|founded|site of|took place|happened)\b/i}
+  };
+  var FILTERS = [["all","All"],["people","People"],["buildings","Buildings & former uses"],["events","Events"],["osm","Plaques & old names"]];
+
+  var $ = function(s){return document.querySelector(s)};
+  var state = {lat:null,lon:null,items:[],filter:"all",token:0,markers:{}};
+  var map, you, ring, layer, ctl;
+
+  function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+  function rad(x){return x*Math.PI/180}
+  function dist(a,b,c,d){
+    var R=6371000,dl=rad(c-a),dn=rad(d-b);
+    var h=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(rad(a))*Math.cos(rad(c))*Math.sin(dn/2)*Math.sin(dn/2);
+    return 2*R*Math.asin(Math.sqrt(h));
+  }
+  function fmt(m){return m<1000 ? (Math.round(m/10)*10)+" m" : (m/1000).toFixed(1)+" km"}
+  function setStatus(t){$("#status").textContent=t}
+  function radius(){return parseInt($("#radius").value,10)}
+
+  function initMap(){
+    map = L.map("map",{zoomControl:true}).setView([DEFAULT.lat,DEFAULT.lon],16);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
+    layer = L.layerGroup().addTo(map);
+    map.on("click",function(e){explore(e.latlng.lat,e.latlng.lng,null)});
+  }
+
+  function classify(it){
+    if(it.src==="osm") return ["osm"];
+    var t=(it.desc||"")+" "+(it.extract||"");
+    return Object.keys(CATS).filter(function(k){return CATS[k].re.test(t)});
+  }
+
+  function getJSON(url,opts){
+    return fetch(url,opts).then(function(r){if(!r.ok) throw new Error("HTTP "+r.status); return r.json()});
+  }
+
+  function fetchWiki(lat,lon,r,signal){
+    var p=new URLSearchParams({
+      action:"query",format:"json",origin:"*",generator:"geosearch",
+      ggscoord:lat+"|"+lon,ggsradius:String(Math.min(r,10000)),ggslimit:"20",ggsnamespace:"0",
+      prop:"coordinates|pageimages|description|extracts|info",inprop:"url",colimit:"20",
+      piprop:"thumbnail",pithumbsize:"240",exintro:"1",explaintext:"1",exlimit:"20",exchars:"420"
+    });
+    return getJSON("https://en.wikipedia.org/w/api.php?"+p.toString(),{signal:signal}).then(function(d){
+      var pages=(d.query&&d.query.pages)?Object.keys(d.query.pages).map(function(k){return d.query.pages[k]}):[];
+      return pages.filter(function(p){return p.coordinates&&p.coordinates.length}).map(function(p){
+        var c=p.coordinates[0];
+        return {src:"wiki",id:"w"+p.pageid,title:p.title,desc:p.description||"",extract:p.extract||"",
+          img:p.thumbnail?p.thumbnail.source:"",lat:c.lat,lon:c.lon,url:p.fullurl,facts:[]};
+      });
+    });
+  }
+
+  function fetchOSM(lat,lon,r,signal){
+    var a="(around:"+Math.min(r,2000)+","+lat+","+lon+")";
+    var q="[out:json][timeout:20];("+
+      "nwr"+a+"[historic][name];"+
+      "nwr"+a+"[memorial=plaque];"+
+      "nwr"+a+"[old_name];"+
+      "nwr"+a+"[\"former:amenity\"];"+
+      "nwr"+a+"[start_date][name];"+
+      ");out center tags 80;";
+    return fetch("https://overpass-api.de/api/interpreter",{
+      method:"POST",signal:signal,
+      headers:{"Content-Type":"application/x-www-form-urlencoded"},
+      body:"data="+encodeURIComponent(q)
+    }).then(function(r){if(!r.ok) throw new Error("HTTP "+r.status); return r.json()}).then(function(d){
+      return (d.elements||[]).map(function(e){
+        var t=e.tags||{}, la=e.lat!=null?e.lat:(e.center&&e.center.lat), lo=e.lon!=null?e.lon:(e.center&&e.center.lon);
+        if(la==null||lo==null) return null;
+        var kind=t.memorial==="plaque"?"plaque":(t.historic||(t["former:amenity"]?"former "+t["former:amenity"]:"")||"dated feature");
+        var title=t.name||(t.inscription?t.inscription.split(/[.\n]/)[0].slice(0,80):"Plaque");
+        var facts=[];
+        if(t.start_date) facts.push(["Dated",t.start_date]);
+        if(t.old_name) facts.push(["Formerly called",t.old_name]);
+        if(t["former:amenity"]) facts.push(["Used to be",t["former:amenity"].replace(/_/g," ")]);
+        if(t.inscription && t.name) facts.push(["Inscription",t.inscription.slice(0,240)]);
+        var url=t.wikipedia&&t.wikipedia.indexOf(":")>0 ? "https://"+t.wikipedia.split(":")[0]+".wikipedia.org/wiki/"+encodeURIComponent(t.wikipedia.slice(t.wikipedia.indexOf(":")+1).replace(/ /g,"_"))
+          : "https://www.openstreetmap.org/"+e.type+"/"+e.id;
+        return {src:"osm",id:"o"+e.type+e.id,title:title,desc:kind.replace(/_/g," "),extract:"",img:"",lat:la,lon:lo,url:url,facts:facts};
+      }).filter(Boolean);
+    });
+  }
+
+  function reverse(lat,lon,signal){
+    return getJSON("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&addressdetails=1&lat="+lat+"&lon="+lon,{signal:signal}).then(function(d){
+      var a=d.address||{};
+      var road=a.road||a.pedestrian||a.footway||a.neighbourhood||"";
+      var area=a.suburb||a.village||a.town||a.city_district||a.city||"";
+      var town=a.city||a.town||a.village||a.county||"";
+      return {name:[road,area].filter(Boolean).join(", ")||d.display_name||"This spot",
+              sub:[town,a.state||a.county,a.postcode].filter(function(x,i,arr){return x&&arr.indexOf(x)===i}).join(", ")};
+    });
+  }
+
+  function explore(lat,lon,label){
+    if(ctl) ctl.abort();
+    ctl=new AbortController();
+    var sig=ctl.signal, tok=++state.token, r=radius();
+    state.lat=lat; state.lon=lon; state.items=[];
+    $("#placeName").textContent=label&&label.name?label.name:"Looking up this spot";
+    $("#placeSub").textContent=label&&label.example?"Example location. Use your location or search to explore your own area.":(label&&label.sub||"");
+    setStatus("Searching Wikipedia and OpenStreetMap…");
+    $("#list").innerHTML=""; $("#chips").innerHTML="";
+    map.setView([lat,lon],r>=2000?14:(r>=1000?15:16));
+    drawYou(lat,lon,r);
+
+    var osmFailed=false;
+    var pWiki=fetchWiki(lat,lon,r,sig);
+    var pOsm=fetchOSM(lat,lon,r,sig).catch(function(e){ if(e.name==="AbortError") throw e; osmFailed=true; return []; });
+    var pName=(label&&label.name)?Promise.resolve(null):reverse(lat,lon,sig).catch(function(e){ if(e.name==="AbortError") throw e; return null; });
+
+    Promise.all([pWiki,pOsm,pName]).then(function(res){
+      if(tok!==state.token) return;
+      if(res[2]){ $("#placeName").textContent=res[2].name; $("#placeSub").textContent=res[2].sub; }
+      else if(!(label&&label.name)){ $("#placeName").textContent="Selected spot"; $("#placeSub").textContent=lat.toFixed(4)+", "+lon.toFixed(4); }
+      var wiki=res[0], osm=res[1];
+      var seen={}; wiki.forEach(function(w){seen[w.title.toLowerCase()]=1});
+      osm=osm.filter(function(o){return !seen[o.title.toLowerCase()]});
+      var all=wiki.concat(osm);
+      all.forEach(function(it){it.d=dist(lat,lon,it.lat,it.lon); it.cats=classify(it)});
+      all.sort(function(a,b){return a.d-b.d});
+      state.items=all; state.filter="all";
+      render();
+      var msg=all.length+(all.length===1?" place":" places")+" within "+fmt(r);
+      if(osmFailed) msg+=". OpenStreetMap layer did not respond, showing Wikipedia only.";
+      setStatus(msg);
+    }).catch(function(e){
+      if(e.name==="AbortError"||tok!==state.token) return;
+      setStatus("Could not load results ("+e.message+"). Check your connection and try again.");
+    });
+  }
+
+  function drawYou(lat,lon,r){
+    if(you) map.removeLayer(you); if(ring) map.removeLayer(ring);
+    ring=L.circle([lat,lon],{radius:r,color:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()||"#0b6c86",weight:1,fillOpacity:.05,interactive:false}).addTo(map);
+    you=L.circleMarker([lat,lon],{radius:8,weight:3,color:"#fff",fillColor:"#0b6c86",fillOpacity:1,interactive:false}).addTo(map);
+  }
+
+  function visible(){
+    return state.items.filter(function(it){return state.filter==="all"||it.cats.indexOf(state.filter)>-1});
+  }
+
+  function render(){
+    var chips=$("#chips");
+    chips.innerHTML=FILTERS.map(function(f){
+      var n=f[0]==="all"?state.items.length:state.items.filter(function(it){return it.cats.indexOf(f[0])>-1}).length;
+      return '<button type="button" class="chip" data-f="'+f[0]+'" aria-pressed="'+(state.filter===f[0])+'">'+esc(f[1])+'<span class="n">'+n+'</span></button>';
+    }).join("");
+
+    var items=visible(), list=$("#list");
+    layer.clearLayers(); state.markers={};
+    if(!items.length){
+      list.innerHTML='<li class="empty">'+(state.items.length?"Nothing in this category here. Try another filter.":"Nothing found in this radius. Try a larger one, or tap a different spot on the map. Wikipedia coverage is thinner outside towns and cities.")+'</li>';
+      return;
+    }
+    list.innerHTML=items.map(function(it,i){
+      var thumb=it.img?'<img src="'+esc(it.img)+'" alt="" loading="lazy">':'<div class="noimg">'+(it.src==="osm"?"Map tag":"No photo")+'</div>';
+      var badges=it.cats.filter(function(c){return c!=="osm"}).map(function(c){return '<span class="badge">'+esc(CATS[c].label)+'</span>'}).join("");
+      var facts=it.facts.length?'<ul class="facts">'+it.facts.map(function(f){return '<li><b>'+esc(f[0])+':</b> '+esc(f[1])+'</li>'}).join("")+'</ul>':"";
+      return '<li class="card '+it.src+'" id="c-'+esc(it.id)+'">'+thumb+'<div>'+
+        '<h3>'+esc(it.title)+'</h3>'+
+        '<div class="meta"><span class="dist">'+fmt(it.d)+'</span><span>'+esc(it.src==="osm"?"OpenStreetMap":"Wikipedia")+'</span></div>'+
+        (it.desc?'<p class="desc"><i>'+esc(it.desc)+'</i></p>':'')+
+        (it.extract?'<p class="desc">'+esc(it.extract)+(it.extract.length>=410?'…':'')+'</p>':'')+
+        facts+
+        (badges?'<div class="badges">'+badges+'</div>':'')+
+        '<div class="actions"><button type="button" data-show="'+i+'">Show on map</button><a href="'+esc(it.url)+'" target="_blank" rel="noopener">'+(it.src==="osm"?"View source":"Read more")+'</a></div>'+
+        '</div></li>';
+    }).join("");
+
+    items.forEach(function(it){
+      var col=getComputedStyle(document.documentElement).getPropertyValue(it.src==="osm"?"--mark-osm":"--accent").trim();
+      var m=L.circleMarker([it.lat,it.lon],{radius:7,weight:2,color:"#fff",fillColor:col,fillOpacity:.95}).addTo(layer);
+      m.bindPopup('<strong>'+esc(it.title)+'</strong><br>'+fmt(it.d)+(it.desc?' &middot; '+esc(it.desc):''));
+      m.on("click",function(){var el=document.getElementById("c-"+it.id); if(el) el.scrollIntoView({block:"nearest",behavior:"smooth"})});
+      state.markers[it.id]=m;
+    });
+  }
+
+  document.addEventListener("click",function(e){
+    var chip=e.target.closest&&e.target.closest(".chip");
+    if(chip){state.filter=chip.getAttribute("data-f"); render(); return}
+    var show=e.target.closest&&e.target.closest("[data-show]");
+    if(show){
+      var it=visible()[parseInt(show.getAttribute("data-show"),10)];
+      if(it&&state.markers[it.id]){
+        map.setView([it.lat,it.lon],Math.max(map.getZoom(),17));
+        state.markers[it.id].openPopup();
+        document.getElementById("map").scrollIntoView({block:"nearest",behavior:"smooth"});
+      }
+    }
+  });
+
+  $("#locate").addEventListener("click",function(){
+    if(!navigator.geolocation){setStatus("This browser cannot share a location. Search for a place instead."); return}
+    setStatus("Waiting for your location…");
+    navigator.geolocation.getCurrentPosition(function(pos){
+      explore(pos.coords.latitude,pos.coords.longitude,null);
+    },function(err){
+      var m={1:"Location permission was denied. Allow it in your browser settings, or search for a place.",2:"Your position could not be determined. Search for a place instead.",3:"Finding your location took too long. Try again or search for a place."};
+      setStatus(m[err.code]||"Could not get your location.");
+    },{enableHighAccuracy:true,timeout:12000,maximumAge:60000});
+  });
+
+  $("#searchForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    var q=$("#q").value.trim(); if(!q) return;
+    setStatus("Searching for “"+q+"”…");
+    getJSON("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=0&q="+encodeURIComponent(q)).then(function(d){
+      if(!d.length){setStatus("No place found for “"+q+"”. Try a street and town, or a postcode."); return}
+      var p=d[0];
+      explore(parseFloat(p.lat),parseFloat(p.lon),{name:(p.display_name||q).split(",").slice(0,2).join(",").trim(),sub:(p.display_name||"").split(",").slice(2,4).join(",").trim()});
+    }).catch(function(err){setStatus("Search failed ("+err.message+"). Try again in a moment.")});
+  });
+
+  $("#radius").addEventListener("change",function(){
+    if(state.lat!=null) explore(state.lat,state.lon,null);
+  });
+
+  initMap();
+  explore(DEFAULT.lat,DEFAULT.lon,DEFAULT);
+})();
+</script>
+</body>
+</html>
